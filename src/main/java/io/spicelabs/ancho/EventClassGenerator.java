@@ -51,6 +51,7 @@ public class EventClassGenerator {
     private static final String JFR_NAME_DESC = "Ljdk/jfr/Name;";
     private static final String JFR_LABEL_DESC = "Ljdk/jfr/Label;";
     private static final String JFR_STACK_TRACE_DESC = "Ljdk/jfr/StackTrace;";
+    private static final String JFR_ENABLED_DESC = "Ljdk/jfr/Enabled;";
 
     /** Package for generated event classes. */
     static final String EVENT_PACKAGE = "io/spicelabs/ancho/events";
@@ -108,6 +109,11 @@ public class EventClassGenerator {
 
         // @StackTrace(true)
         av = cw.visitAnnotation(JFR_STACK_TRACE_DESC, true);
+        av.visit("value", true);
+        av.visitEnd();
+
+        // @Enabled(true) — required for events to fire without explicit JFC configuration
+        av = cw.visitAnnotation(JFR_ENABLED_DESC, true);
         av.visit("value", true);
         av.visitEnd();
 

@@ -36,12 +36,12 @@ public class ProbeAdvice {
      * Map from instrumented method key ("classFqn#method#descriptor") to the
      * FQN of the generated JFR event class. Populated at agent startup.
      */
-    static final Map<String, String> EVENT_CLASS_MAP = new ConcurrentHashMap<>();
+    public static final Map<String, String> EVENT_CLASS_MAP = new ConcurrentHashMap<>();
 
     /**
      * Cache of resolved event classes to avoid repeated Class.forName() calls.
      */
-    private static final Map<String, Class<?>> CLASS_CACHE = new ConcurrentHashMap<>();
+    public static final Map<String, Class<?>> CLASS_CACHE = new ConcurrentHashMap<>();
 
     /**
      * Injected at method entry. Creates and commits a JFR event.
@@ -50,9 +50,16 @@ public class ProbeAdvice {
      * We use it to look up the generated event class.
      */
     @Advice.OnMethodEnter
-    public static void onEnter(@Advice.Origin("#t#m#d") String methodKey) {
+    public static void onEnter(@Advice.Origin("#t|#m|#d") String methodKey) {
         try {
             String eventClassName = EVENT_CLASS_MAP.get(methodKey);
+            if (eventClassName == null) {
+                // Fallback: try without descriptor (class|method only)
+                int lastPipe = methodKey.lastIndexOf('|');
+                if (lastPipe > 0) {
+                    eventClassName = EVENT_CLASS_MAP.get(methodKey.substring(0, lastPipe));
+                }
+            }
             if (eventClassName == null) return;
 
             Class<?> eventClass = CLASS_CACHE.get(eventClassName);

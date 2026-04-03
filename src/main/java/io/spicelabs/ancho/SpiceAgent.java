@@ -74,12 +74,16 @@ public class SpiceAgent {
                 return;
             }
 
-            // 3. Generate JFR event classes
+            // 3. Generate JFR event classes + bootstrap ProbeAdvice
             Map<String, String> eventClassNames = EventClassGenerator.generateAndLoad(
                     config.getProbes(), inst);
             log("Generated " + eventClassNames.size() + " JFR event classes");
 
-            // 4. Install ByteBuddy instrumentation
+            // 4. Inject ProbeAdvice onto bootstrap classloader so it's visible
+            //    from instrumented JDK classes (Cipher, MessageDigest, etc.)
+            BootstrapInjector.inject(inst);
+
+            // 5. Install ByteBuddy instrumentation
             ProbeInstaller.install(config, eventClassNames, inst);
 
             log("Agent startup complete. " + config.getProbes().size() +

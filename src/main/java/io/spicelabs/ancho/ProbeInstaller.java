@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-/* Copyright 2025 Spice Labs, Inc. \& Contributors
+/* Copyright 2025 Spice Labs, Inc. & Contributors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.utility.JavaModule;
@@ -33,35 +34,56 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 /**
  * Installs ByteBuddy instrumentation for all probe definitions.
  *
- * <p>For each probe, registers a type matcher + method matcher that injects
- * {@link ProbeAdvice} at method entry. The advice emits a JFR event for
- * every call to the instrumented method.
+ * <p>The advice class ({@code ProbeAdvice}) lives on the bootstrap classloader
+ * (injected by {@link BootstrapInjector}) so it's visible from instrumented
+ * JDK classes like {@code javax.crypto.Cipher}. We resolve it via
+ * {@link ClassFileLocator} to avoid loading it on the app classloader,
+ * which would create a duplicate class and confuse ByteBuddy.
  */
 public class ProbeInstaller {
 
+    private static final String ADVICE_CLASS_NAME = "io.spicelabs.ancho.ProbeAdvice";
+
     /**
      * Install instrumentation for all probes.
-     *
-     * @param config          parsed probe configuration
-     * @param eventClassNames map from probe ID → generated event class FQN
-     * @param inst            the Instrumentation instance
      */
     public static void install(ProbeConfig config, Map<String, String> eventClassNames,
                                Instrumentation inst) {
-        // Populate the advice's lookup map: "classFqn#method#descriptor" → event class name
-        for (ProbeConfig.Probe probe : config.getProbes()) {
-            String eventClassName = eventClassNames.get(probe.id);
-            if (eventClassName == null) continue;
+        // Populate the advice's EVENT_CLASS_MAP via the bootstrap-loaded class.
+        // We must use reflection because the app CL must NOT load ProbeAdvice
+        // (it's on the bootstrap CL only).
+        try {
+            Class<?> adviceClass = Class.forName(ADVICE_CLASS_NAME, true, null);
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, String> eventMap = (java.util.Map<String, String>)
+                    adviceClass.getField("EVENT_CLASS_MAP").get(null);
 
-            String key = probe.className + "#" + probe.method + "#" + probe.descriptor;
-            ProbeAdvice.EVENT_CLASS_MAP.put(key, eventClassName);
+            for (ProbeConfig.Probe probe : config.getProbes()) {
+                String eventClassName = eventClassNames.get(probe.id);
+                if (eventClassName == null) continue;
+                // Key with descriptor for exact match
+                if (probe.descriptor != null) {
+                    eventMap.put(probe.className + "|" + probe.method + "|" + probe.descriptor, eventClassName);
+                }
+                // Key without descriptor as fallback
+                eventMap.put(probe.className + "|" + probe.method, eventClassName);
+            }
+        } catch (Exception e) {
+            SpiceAgent.log("WARN: Failed to populate event map: " + e.getMessage());
+            return; // Can't instrument without the map
         }
 
         SpiceAgent.log("Installing ByteBuddy instrumentation for " +
                 config.getByClass().size() + " classes, " +
                 config.getProbes().size() + " probes");
 
-        // Build a single AgentBuilder with all type+method matchers
+        // Resolve the advice class bytes from the agent JAR itself (our own classloader).
+        // We use our CL's locator so ByteBuddy reads the class file with the correct
+        // (potentially shaded) annotation references. The class is also on the bootstrap
+        // CL (via BootstrapInjector) so it's visible at runtime from JDK classes.
+        ClassFileLocator adviceLocator = ClassFileLocator.ForClassLoader.of(
+                ProbeInstaller.class.getClassLoader());
+
         AgentBuilder builder = new AgentBuilder.Default()
                 .disableClassFormatChanges()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
@@ -73,13 +95,12 @@ public class ProbeInstaller {
                                 ": " + throwable.getMessage());
                     }
                 })
-                .ignore(none()); // Don't skip JDK classes — we instrument them
+                .ignore(none()); // Don't skip JDK classes
 
         for (Map.Entry<String, List<ProbeConfig.Probe>> entry : config.getByClass().entrySet()) {
             String classFqn = entry.getKey();
             List<ProbeConfig.Probe> probes = entry.getValue();
 
-            // Build method matcher: match any of the probed methods in this class
             ElementMatcher.Junction<MethodDescription> methodMatcher = none();
             for (ProbeConfig.Probe probe : probes) {
                 ElementMatcher.Junction<MethodDescription> single = named(probe.method);
@@ -100,13 +121,41 @@ public class ProbeInstaller {
                                                                  ClassLoader classLoader,
                                                                  JavaModule module,
                                                                  ProtectionDomain protectionDomain) {
-                            return b.visit(Advice.to(ProbeAdvice.class).on(finalMethodMatcher));
+                            try {
+                                return b.visit(
+                                    Advice.to(
+                                        net.bytebuddy.pool.TypePool.Default.of(adviceLocator)
+                                            .describe(ADVICE_CLASS_NAME)
+                                            .resolve(),
+                                        adviceLocator
+                                    ).on(finalMethodMatcher)
+                                );
+                            } catch (Exception e) {
+                                SpiceAgent.log("WARN: Advice resolution failed for " +
+                                    typeDescription.getName() + ": " + e.getMessage());
+                                return b;
+                            }
                         }
                     });
         }
 
         builder.installOn(inst);
         SpiceAgent.log("ByteBuddy instrumentation installed");
+
+        // Retransform already-loaded classes that match our probes.
+        if (inst.isRetransformClassesSupported()) {
+            for (Class<?> loadedClass : inst.getAllLoadedClasses()) {
+                String name = loadedClass.getName();
+                if (config.hasClass(name) && inst.isModifiableClass(loadedClass)) {
+                    try {
+                        inst.retransformClasses(loadedClass);
+                        SpiceAgent.log("Retransformed: " + name);
+                    } catch (Throwable t) {
+                        SpiceAgent.log("WARN: Failed to retransform " + name + ": " + t.getMessage());
+                    }
+                }
+            }
+        }
     }
 
     /**

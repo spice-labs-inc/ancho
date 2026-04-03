@@ -9,6 +9,7 @@ jobs:
     name: Publish
     runs-on: ubuntu-24.04
     permissions:
+      contents: read
       packages: write
     outputs:
       version: ${{ steps.tag.outputs.version }}
