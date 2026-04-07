@@ -97,9 +97,10 @@ public class EventClassGenerator {
         cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER,
                 internalName, null, JFR_EVENT_INTERNAL, null);
 
-        // @Name("spice.probe.xxx")
+        // @Name("spice.probe.xxx") — sanitize to valid Java type name
+        // Each dot-separated segment must be a valid Java identifier (can't start with digit)
         AnnotationVisitor av = cw.visitAnnotation(JFR_NAME_DESC, true);
-        av.visit("value", eventName);
+        av.visit("value", sanitizeJfrName(eventName));
         av.visitEnd();
 
         // @Label("DESCipher init")
@@ -149,5 +150,24 @@ public class EventClassGenerator {
         }
 
         return tempJar;
+    }
+
+    /**
+     * Sanitize a JFR event name so each dot-separated segment is a valid Java identifier.
+     * Segments that start with a digit get a 'p' prefix.
+     */
+    static String sanitizeJfrName(String name) {
+        String[] parts = name.split("\\.");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) sb.append('.');
+            String part = parts[i];
+            if (!part.isEmpty() && Character.isDigit(part.charAt(0))) {
+                sb.append('p').append(part);
+            } else {
+                sb.append(part);
+            }
+        }
+        return sb.toString();
     }
 }
