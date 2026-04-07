@@ -46,8 +46,6 @@ public class SpiceAgent {
      */
     public static void premain(String agentArgs, Instrumentation inst) {
         try {
-            log("Starting Spice Labs JFR agent");
-
             // 1. Parse probe config
             if (agentArgs == null || agentArgs.trim().isEmpty()) {
                 log("WARN: No probe config path provided. Agent will not instrument anything.");
@@ -55,11 +53,7 @@ public class SpiceAgent {
             }
 
             String configPath = agentArgs.trim();
-            log("Loading probe config from: " + configPath);
-
             ProbeConfig config = ProbeConfig.load(configPath);
-            log("Loaded " + config.getProbes().size() + " probes for " +
-                    config.getByClass().size() + " classes");
 
             if (config.getProbes().isEmpty()) {
                 log("No probes configured. Agent will not instrument anything.");
@@ -68,26 +62,21 @@ public class SpiceAgent {
 
             // 2. Check if JFR is available
             if (!isJfrAvailable()) {
-                log("WARN: jdk.jfr.Event not available on this JVM. " +
-                        "Custom probe events will not be emitted. " +
-                        "Native JDK security events may still be captured via JFC settings.");
+                log("WARN: jdk.jfr.Event not available on this JVM.");
                 return;
             }
 
             // 3. Generate JFR event classes + bootstrap ProbeAdvice
             Map<String, String> eventClassNames = EventClassGenerator.generateAndLoad(
                     config.getProbes(), inst);
-            log("Generated " + eventClassNames.size() + " JFR event classes");
 
-            // 4. Inject ProbeAdvice onto bootstrap classloader so it's visible
-            //    from instrumented JDK classes (Cipher, MessageDigest, etc.)
+            // 4. Inject ProbeAdvice onto bootstrap classloader
             BootstrapInjector.inject(inst);
 
             // 5. Install ByteBuddy instrumentation
             ProbeInstaller.install(config, eventClassNames, inst);
 
-            log("Agent startup complete. " + config.getProbes().size() +
-                    " methods will emit JFR events.");
+            log(config.getProbes().size() + " crypto probes active.");
 
         } catch (Throwable t) {
             log("ERROR: Agent startup failed: " + t.getMessage());
@@ -114,6 +103,6 @@ public class SpiceAgent {
      * being on the classpath.
      */
     public static void log(String message) {
-        System.out.println(LOG_PREFIX + message);
+        System.err.println(LOG_PREFIX + message);
     }
 }

@@ -73,9 +73,7 @@ public class ProbeInstaller {
             return; // Can't instrument without the map
         }
 
-        SpiceAgent.log("Installing ByteBuddy instrumentation for " +
-                config.getByClass().size() + " classes, " +
-                config.getProbes().size() + " probes");
+
 
         // Resolve the advice class bytes from the agent JAR itself (our own classloader).
         // We use our CL's locator so ByteBuddy reads the class file with the correct
@@ -140,7 +138,6 @@ public class ProbeInstaller {
         }
 
         builder.installOn(inst);
-        SpiceAgent.log("ByteBuddy instrumentation installed");
 
         // Retransform already-loaded classes that match our probes.
         if (inst.isRetransformClassesSupported()) {
@@ -149,7 +146,6 @@ public class ProbeInstaller {
                 if (config.hasClass(name) && inst.isModifiableClass(loadedClass)) {
                     try {
                         inst.retransformClasses(loadedClass);
-                        SpiceAgent.log("Retransformed: " + name);
                     } catch (Throwable t) {
                         SpiceAgent.log("WARN: Failed to retransform " + name + ": " + t.getMessage());
                     }
