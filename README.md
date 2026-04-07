@@ -1,8 +1,7 @@
 # Ancho
 
 [![Maven Central](https://img.shields.io/maven-central/v/io.spicelabs/ancho?label=Maven%20Central)](https://central.sonatype.com/artifact/io.spicelabs/ancho)
-[![GitHub Release](https://img.shields.io/github/v/release/spice-labs-inc/ancho?label=GitHub%20Release)](https://github.com/spice-labs-inc/ancho/releases)
-[![GitHub Package](https://img.shields.io/badge/GitHub-Packages-blue?logo=github)](https://github.com/spice-labs-inc/ancho/packages/)
+
 
 **Ancho** is a Java agent that instruments cryptographic method calls using [Java Flight Recorder (JFR)](https://openjdk.org/jeps/328). It's part of the [Spice Labs](https://spicelabs.io) runtime PQC (Post-Quantum Cryptography) survey pipeline, enabling organizations to discover which cryptographic algorithms are actually being used at runtime.
 
