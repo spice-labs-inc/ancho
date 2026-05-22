@@ -29,7 +29,13 @@ class ProbeAdviceTest {
 
     @Test
     void onEnter_unknownMethodKey_doesNotThrow() {
-        assertDoesNotThrow(() -> ProbeAdvice.onEnter("unknown.Class#unknownMethod#()V"));
+        assertDoesNotThrow(() -> ProbeAdvice.onEnter("unknown.Class#unknownMethod#()V", null));
+    }
+
+    @Test
+    void onEnter_withDeclaringClass_doesNotThrow() {
+        // declaringClass present but unmapped methodKey — must still be null-safe.
+        assertDoesNotThrow(() -> ProbeAdvice.onEnter("unknown#unknown#()V", String.class));
     }
 
     @Test
@@ -46,6 +52,6 @@ class ProbeAdviceTest {
     void onEnter_withMapping_doesNotThrow() {
         // Even if the event class doesn't exist, the advice should catch and swallow
         ProbeAdvice.EVENT_CLASS_MAP.put("test#test#()V", "nonexistent.EventClass");
-        assertDoesNotThrow(() -> ProbeAdvice.onEnter("test#test#()V"));
+        assertDoesNotThrow(() -> ProbeAdvice.onEnter("test#test#()V", String.class));
     }
 }
