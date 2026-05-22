@@ -56,6 +56,17 @@ public class EventClassGenerator {
     /** Package for generated event classes. */
     static final String EVENT_PACKAGE = "io/spicelabs/ancho/events";
 
+    /** Internal name of the fixed {@code spice.ClassLoaded} event class. */
+    static final String CLASS_LOADED_INTERNAL = EVENT_PACKAGE + "/SpiceClassLoaded";
+
+    /** Fully-qualified name of the {@code spice.ClassLoaded} event class (bootstrap-loaded). */
+    public static final String CLASS_LOADED_FQN = CLASS_LOADED_INTERNAL.replace('/', '.');
+
+    /** Public String fields of the {@code spice.ClassLoaded} event, in stamp order. */
+    public static final String[] CLASS_LOADED_FIELDS = {
+            "className", "classGitoid", "classSha256", "codeSource", "jarGitoid", "jarSha256"
+    };
+
     /**
      * Generate event classes for all probes and make them loadable.
      *
@@ -77,6 +88,10 @@ public class EventClassGenerator {
             classBytes.put(internalName + ".class", bytes);
             eventClassNames.put(probe.id, fqn);
         }
+
+        // Always generate the spice.ClassLoaded event used by ClassHashTransformer,
+        // so class-hash capture works even when no probes are configured.
+        classBytes.put(CLASS_LOADED_INTERNAL + ".class", generateClassLoadedEvent());
 
         if (!classBytes.isEmpty()) {
             File tempJar = createTempJar(classBytes);
@@ -116,6 +131,55 @@ public class EventClassGenerator {
         av = cw.visitAnnotation(JFR_ENABLED_DESC, true);
         av.visit("value", true);
         av.visitEnd();
+
+        // Default constructor: public <init>() { super(); }
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(Opcodes.ALOAD, 0);
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, JFR_EVENT_INTERNAL, "<init>", "()V", false);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(1, 1);
+        mv.visitEnd();
+
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    /**
+     * Generate bytecode for the fixed {@code spice.ClassLoaded} event class. Unlike the
+     * probe marker events, this carries {@link #CLASS_LOADED_FIELDS} public String fields
+     * (set reflectively by {@link ClassHashTransformer}) and disables stack traces.
+     */
+    static byte[] generateClassLoadedEvent() {
+        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
+
+        cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER,
+                CLASS_LOADED_INTERNAL, null, JFR_EVENT_INTERNAL, null);
+
+        // @Name("spice.ClassLoaded")
+        AnnotationVisitor av = cw.visitAnnotation(JFR_NAME_DESC, true);
+        av.visit("value", "spice.ClassLoaded");
+        av.visitEnd();
+
+        // @Label("Spice Class Loaded")
+        av = cw.visitAnnotation(JFR_LABEL_DESC, true);
+        av.visit("value", "Spice Class Loaded");
+        av.visitEnd();
+
+        // @StackTrace(false) — no stack needed, lower overhead
+        av = cw.visitAnnotation(JFR_STACK_TRACE_DESC, true);
+        av.visit("value", false);
+        av.visitEnd();
+
+        // @Enabled(true) — required for events to fire without explicit JFC configuration
+        av = cw.visitAnnotation(JFR_ENABLED_DESC, true);
+        av.visit("value", true);
+        av.visitEnd();
+
+        // public String fields
+        for (String field : CLASS_LOADED_FIELDS) {
+            cw.visitField(Opcodes.ACC_PUBLIC, field, "Ljava/lang/String;", null, null).visitEnd();
+        }
 
         // Default constructor: public <init>() { super(); }
         MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);

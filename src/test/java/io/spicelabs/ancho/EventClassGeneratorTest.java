@@ -92,4 +92,50 @@ class EventClassGeneratorTest {
     void eventPackageName() {
         assertEquals("io/spicelabs/ancho/events", EventClassGenerator.EVENT_PACKAGE);
     }
+
+    @Test
+    void classLoadedEvent_producesValidBytecodeWithFields() {
+        byte[] bytes = EventClassGenerator.generateClassLoadedEvent();
+
+        assertEquals((byte) 0xCA, bytes[0]);
+        assertEquals((byte) 0xFE, bytes[1]);
+        int majorVersion = ((bytes[6] & 0xFF) << 8) | (bytes[7] & 0xFF);
+        assertEquals(52, majorVersion, "Should target JDK 8 (class version 52)");
+
+        String asString = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1);
+        assertTrue(asString.contains("spice.ClassLoaded"), "Should carry the @Name value");
+        assertTrue(asString.contains("jdk/jfr/Event"), "Should extend jdk.jfr.Event");
+        for (String field : EventClassGenerator.CLASS_LOADED_FIELDS) {
+            assertTrue(asString.contains(field), "Should declare field " + field);
+        }
+    }
+
+    @Test
+    void classLoadedEvent_loadsAsJfrEventSubclassWithAnnotations() throws Exception {
+        byte[] bytes = EventClassGenerator.generateClassLoadedEvent();
+        Class<?> ev = new BytesClassLoader().define(EventClassGenerator.CLASS_LOADED_FQN, bytes);
+
+        assertTrue(jdk.jfr.Event.class.isAssignableFrom(ev),
+                "Generated class must be a jdk.jfr.Event subclass");
+
+        // All declared fields must be present and typed String.
+        for (String field : EventClassGenerator.CLASS_LOADED_FIELDS) {
+            assertEquals(String.class, ev.getField(field).getType(), field + " should be String");
+        }
+
+        assertEquals("spice.ClassLoaded", ev.getAnnotation(jdk.jfr.Name.class).value());
+        assertTrue(ev.getAnnotation(jdk.jfr.Enabled.class).value(), "@Enabled should be true");
+        assertFalse(ev.getAnnotation(jdk.jfr.StackTrace.class).value(), "@StackTrace should be false");
+    }
+
+    /** Minimal loader so we can define and reflect on the generated event class. */
+    private static final class BytesClassLoader extends ClassLoader {
+        BytesClassLoader() {
+            super(EventClassGeneratorTest.class.getClassLoader());
+        }
+
+        Class<?> define(String fqn, byte[] bytes) {
+            return defineClass(fqn, bytes, 0, bytes.length);
+        }
+    }
 }
