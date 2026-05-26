@@ -55,28 +55,33 @@ public class SpiceAgent {
             String configPath = agentArgs.trim();
             ProbeConfig config = ProbeConfig.load(configPath);
 
-            if (config.getProbes().isEmpty()) {
-                log("No probes configured. Agent will not instrument anything.");
-                return;
-            }
-
             // 2. Check if JFR is available
             if (!isJfrAvailable()) {
                 log("WARN: jdk.jfr.Event not available on this JVM.");
                 return;
             }
 
-            // 3. Generate JFR event classes + bootstrap ProbeAdvice
+            // 3. Generate JFR event classes (probe markers + spice.ClassLoaded) onto bootstrap.
+            //    spice.ClassLoaded is always generated, so class-hash capture works even with
+            //    zero probes.
             Map<String, String> eventClassNames = EventClassGenerator.generateAndLoad(
                     config.getProbes(), inst);
 
-            // 4. Inject ProbeAdvice onto bootstrap classloader
-            BootstrapInjector.inject(inst);
+            // 4. Register the class-hash transformer BEFORE ByteBuddy installs its own, so it
+            //    observes original (pre-instrumentation) bytes. canRetransform=true so that
+            //    when ByteBuddy retransforms an already-loaded probe-target class, we hash it
+            //    too (from the original baseline).
+            inst.addTransformer(new ClassHashTransformer(), true);
 
-            // 5. Install ByteBuddy instrumentation
-            ProbeInstaller.install(config, eventClassNames, inst);
-
-            log(config.getProbes().size() + " crypto probes active.");
+            // 5. Probe instrumentation only applies when probes are configured.
+            if (config.getProbes().isEmpty()) {
+                log("No probes configured; capturing class hashes only.");
+            } else {
+                // Inject ProbeAdvice onto bootstrap classloader, then install ByteBuddy.
+                BootstrapInjector.inject(inst);
+                ProbeInstaller.install(config, eventClassNames, inst);
+                log(config.getProbes().size() + " crypto probes active.");
+            }
 
         } catch (Throwable t) {
             log("ERROR: Agent startup failed: " + t.getMessage());
