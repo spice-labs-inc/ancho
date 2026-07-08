@@ -15,17 +15,17 @@ limitations under the License. */
 
 package io.spicelabs.ancho;
 
+import io.spicelabs.coordinates.Coordinates;
+
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.CodeSource;
-import java.security.MessageDigest;
 import java.security.ProtectionDomain;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,9 +55,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * so they're skipped.
  */
 public class ClassHashTransformer implements ClassFileTransformer {
-
-    private static final Charset ASCII = Charset.forName("US-ASCII");
-    private static final char[] HEX = "0123456789abcdef".toCharArray();
 
     /**
      * Re-entrancy guard. Hashing and committing a JFR event can trigger class loading,
@@ -221,26 +218,12 @@ public class ClassHashTransformer implements ClassFileTransformer {
     }
 
     /** goatrodeo primary id: {@code gitoid:blob:sha256:<hex(sha256("blob " + len + "\0" + content))>}. */
-    static String gitoid(byte[] content) throws Exception {
-        // Prefix and content stream into ONE digest; do not sha256(content) then prepend.
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        md.update(("blob " + content.length + " ").getBytes(ASCII));
-        md.update(content);
-        return "gitoid:blob:sha256:" + hex(md.digest());
+    static String gitoid(byte[] content) {
+        return Coordinates.gitoidBlobSha256(content);
     }
 
     /** goatrodeo {@code sha256:} alias: plain unframed SHA-256 of the exact bytes. */
-    static String sha256Hex(byte[] content) throws Exception {
-        return hex(MessageDigest.getInstance("SHA-256").digest(content));
-    }
-
-    static String hex(byte[] bytes) {
-        char[] out = new char[bytes.length * 2];
-        for (int i = 0; i < bytes.length; i++) {
-            int v = bytes[i] & 0xFF;
-            out[i * 2] = HEX[v >>> 4];
-            out[i * 2 + 1] = HEX[v & 0x0F];
-        }
-        return new String(out);
+    static String sha256Hex(byte[] content) {
+        return Coordinates.sha256(content);
     }
 }
