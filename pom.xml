@@ -101,6 +101,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <byte-buddy.version>1.15.11</byte-buddy.version>
         <gson.version>2.11.0</gson.version>
+        <coordinates.version>1.1.0</coordinates.version>
         <junit.jupiter.version>5.13.1</junit.jupiter.version>
     </properties>
 
@@ -115,6 +116,12 @@
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
             <version>${gson.version}</version>
+        </dependency>
+        <!-- Coordinates for sha256/gitoid identifiers — JDK 8 compatible, no deps -->
+        <dependency>
+            <groupId>io.spicelabs</groupId>
+            <artifactId>coordinates</artifactId>
+            <version>${coordinates.version}</version>
         </dependency>
 
         <!-- Test -->
@@ -186,6 +193,10 @@
                                 <relocation>
                                     <pattern>com.google.gson</pattern>
                                     <shadedPattern>io.spicelabs.ancho.shaded.gson</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>io.spicelabs.coordinates</pattern>
+                                    <shadedPattern>io.spicelabs.ancho.shaded.coordinates</shadedPattern>
                                 </relocation>
                             </relocations>
                             <filters>
