@@ -180,6 +180,38 @@ class ClassHashTransformerTest {
         assertEquals(1, lookups[0], "re-entrant call must not reach event resolution");
     }
 
+    @Test
+    void transform_registersClassGitoidForProbeStamping() throws Exception {
+        // With the registry seam supplied (in production: the bootstrap-injected copy), each
+        // hashed class's gitoid must land in the registry so ProbeAdvice can stamp probe events.
+        ClassHashTransformer t = new ClassHashTransformer() {
+            @Override
+            Class<?> lookupRegistryClass() {
+                return ClassGitoidRegistry.class;
+            }
+        };
+        ClassLoader loader = new ClassLoader() {};
+        assertNull(t.transform(loader, "org/example/Stamped", null, mkPd("file:/tmp/stamped.jar"), ABC));
+        assertEquals(ClassHashTransformer.gitoid(ABC),
+                ClassGitoidRegistry.lookup(loader, "org.example.Stamped"),
+                "transform must register the class gitoid under (loader, binary name)");
+    }
+
+    @Test
+    void transform_withoutRegistry_stillCompletes() {
+        // No bootstrap injection and no seam: registry resolution fails once, quietly, and
+        // hashing continues.
+        ClassHashTransformer t = new ClassHashTransformer() {
+            @Override
+            Class<?> lookupRegistryClass() throws ClassNotFoundException {
+                throw new ClassNotFoundException("no bootstrap registry");
+            }
+        };
+        ClassLoader loader = new ClassLoader() {};
+        assertNull(t.transform(loader, "org/example/NoRegistry", null, mkPd("file:/tmp/nr.jar"), ABC));
+        assertNull(ClassGitoidRegistry.lookup(loader, "org.example.NoRegistry"));
+    }
+
     private static ProtectionDomain mkPd(String url) {
         try {
             return new ProtectionDomain(new CodeSource(new URL(url), (Certificate[]) null), null);
