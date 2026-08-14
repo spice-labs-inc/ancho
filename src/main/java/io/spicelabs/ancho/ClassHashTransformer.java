@@ -84,6 +84,10 @@ public class ClassHashTransformer implements ClassFileTransformer {
     private volatile Field[] eventFields; // aligned with EventClassGenerator.CLASS_LOADED_FIELDS
     private volatile Method commitMethod;
 
+    // Reflective handle to ClassGitoidRegistry.register on the bootstrap copy. Resolved once.
+    private volatile Method registerMethod;
+    private volatile boolean registryChecked;
+
     @Override
     public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
                             ProtectionDomain protectionDomain, byte[] classfileBuffer) {
@@ -120,6 +124,8 @@ public class ClassHashTransformer implements ClassFileTransformer {
                     jarHashes != null ? jarHashes[0] : null, // jarGitoid
                     jarHashes != null ? jarHashes[1] : null  // jarSha256
             };
+            // Record (loader, name) -> classGitoid so ProbeAdvice can stamp events later.
+            registerGitoid(loader, values[0], values[1]);
             emit(values);
         } catch (Throwable t) {
             // Never break the target application.
@@ -215,6 +221,55 @@ public class ClassHashTransformer implements ClassFileTransformer {
      */
     Class<?> lookupEventClass() throws ClassNotFoundException {
         return Class.forName(EventClassGenerator.CLASS_LOADED_FQN, true, null);
+    }
+
+    /** Record this class's gitoid in the bootstrap registry so ProbeAdvice can stamp events. */
+    private void registerGitoid(ClassLoader loader, String binaryName, String gitoid) {
+        Method register = resolveRegisterMethod();
+        if (register == null) {
+            return;
+        }
+        try {
+            register.invoke(null, loader, binaryName, gitoid);
+        } catch (Throwable t) {
+            // best-effort
+        }
+    }
+
+    /**
+     * Resolve {@code ClassGitoidRegistry.register} on the registry copy from
+     * {@link #lookupRegistryClass()} so we write the same map the inlined advice reads.
+     * Returns null when the registry isn't available (e.g. no bootstrap injection).
+     */
+    private Method resolveRegisterMethod() {
+        if (registerMethod != null) {
+            return registerMethod;
+        }
+        if (registryChecked) {
+            return null;
+        }
+        synchronized (this) {
+            if (registerMethod == null && !registryChecked) {
+                registryChecked = true;
+                try {
+                    registerMethod = lookupRegistryClass().getMethod("register",
+                            ClassLoader.class, String.class, String.class);
+                } catch (Throwable t) {
+                    // Registry not on bootstrap — declaring-class stamping is simply unavailable.
+                }
+            }
+        }
+        return registerMethod;
+    }
+
+    /**
+     * Resolve the {@code ClassGitoidRegistry} class, which production code loads from the
+     * <em>bootstrap</em> classloader (where {@link BootstrapInjector} injected it) so writer
+     * and reader share one map. Package-private and overridable so tests can supply the
+     * classpath copy without bootstrap injection.
+     */
+    Class<?> lookupRegistryClass() throws ClassNotFoundException {
+        return Class.forName("io.spicelabs.ancho.ClassGitoidRegistry", true, null);
     }
 
     /** goatrodeo primary id: {@code gitoid:blob:sha256:<hex(sha256("blob " + len + "\0" + content))>}. */

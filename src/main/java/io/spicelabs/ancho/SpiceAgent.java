@@ -67,18 +67,21 @@ public class SpiceAgent {
             Map<String, String> eventClassNames = EventClassGenerator.generateAndLoad(
                     config.getProbes(), inst);
 
-            // 4. Register the class-hash transformer BEFORE ByteBuddy installs its own, so it
+            // 4. Inject bootstrap helpers (ProbeAdvice + ClassGitoidRegistry) BEFORE the
+            //    transformer, so the registry exists when the transformer starts populating it.
+            BootstrapInjector.inject(inst);
+
+            // 5. Register the class-hash transformer BEFORE ByteBuddy installs its own, so it
             //    observes original (pre-instrumentation) bytes. canRetransform=true so that
             //    when ByteBuddy retransforms an already-loaded probe-target class, we hash it
-            //    too (from the original baseline).
+            //    too (from the original baseline). It also records each class's gitoid in the
+            //    registry for ProbeAdvice to stamp onto probe events.
             inst.addTransformer(new ClassHashTransformer(), true);
 
-            // 5. Probe instrumentation only applies when probes are configured.
+            // 6. Probe instrumentation only applies when probes are configured.
             if (config.getProbes().isEmpty()) {
                 log("No probes configured; capturing class hashes only.");
             } else {
-                // Inject ProbeAdvice onto bootstrap classloader, then install ByteBuddy.
-                BootstrapInjector.inject(inst);
                 ProbeInstaller.install(config, eventClassNames, inst);
                 log(config.getProbes().size() + " crypto probes active.");
             }

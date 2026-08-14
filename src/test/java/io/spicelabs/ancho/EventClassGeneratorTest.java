@@ -94,6 +94,23 @@ class EventClassGeneratorTest {
     }
 
     @Test
+    void probeEvent_hasClassGitoidAndCallerGitoidsFields() throws Exception {
+        byte[] bytes = EventClassGenerator.generateEventClass(
+                "io/spicelabs/ancho/events/spice_probe_gitoid",
+                "spice.probe.gitoid", "Gitoid Probe");
+        Class<?> ev = new BytesClassLoader()
+                .define("io.spicelabs.ancho.events.spice_probe_gitoid", bytes);
+
+        assertTrue(jdk.jfr.Event.class.isAssignableFrom(ev));
+        assertEquals(String.class,
+                ev.getField(EventClassGenerator.PROBE_CLASS_GITOID_FIELD).getType(),
+                "probe events must carry a String classGitoid field for ProbeAdvice to stamp");
+        assertEquals(String.class,
+                ev.getField(EventClassGenerator.PROBE_CALLER_GITOIDS_FIELD).getType(),
+                "probe events must carry a String callerGitoids field");
+    }
+
+    @Test
     void classLoadedEvent_producesValidBytecodeWithFields() {
         byte[] bytes = EventClassGenerator.generateClassLoadedEvent();
 

@@ -25,51 +25,67 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 
 /**
- * Injects the {@link ProbeAdvice} class onto the bootstrap classloader.
+ * Injects {@link ProbeAdvice} and {@link ClassGitoidRegistry} onto the bootstrap classloader.
  *
  * <p>ByteBuddy Advice is inlined into the target method's bytecode. When the
  * target is a JDK bootstrap class (e.g., {@code javax.crypto.Cipher}), the
  * inlined code must reference classes that are visible from the bootstrap
- * classloader. {@code ProbeAdvice} and its static maps must therefore be on
- * the bootstrap classpath.
+ * classloader. {@code ProbeAdvice}, its static maps, and the {@code ClassGitoidRegistry}
+ * it reads must therefore be on the bootstrap classpath.
  *
- * <p>We achieve this by packaging ProbeAdvice.class into a temp JAR and using
+ * <p>We achieve this by packaging those classes into a temp JAR and using
  * {@link Instrumentation#appendToBootstrapClassLoaderSearch}.
  */
 public class BootstrapInjector {
 
-    private static final String ADVICE_CLASS_RESOURCE = "io/spicelabs/ancho/ProbeAdvice.class";
+    /**
+     * Compiled classes that must live on the bootstrap classloader. Include nested classes
+     * explicitly — each compiles to its own {@code Name$Nested.class} file.
+     */
+    static final String[] BOOTSTRAP_CLASS_RESOURCES = {
+            "io/spicelabs/ancho/ProbeAdvice.class",
+            "io/spicelabs/ancho/ProbeAdvice$EventHandles.class",
+            "io/spicelabs/ancho/ClassGitoidRegistry.class",
+            "io/spicelabs/ancho/ClassGitoidRegistry$LoaderKey.class",
+            "io/spicelabs/ancho/CallerGitoidWalker.class",
+    };
 
     /**
-     * Copy ProbeAdvice.class from our own classloader into a temp JAR
-     * and inject it onto the bootstrap classloader.
+     * Copy the bootstrap helper classes from our own classloader into a temp JAR
+     * and inject them onto the bootstrap classloader.
      */
     public static void inject(Instrumentation inst) throws IOException {
-        byte[] classBytes = loadClassBytes();
-        if (classBytes == null) {
-            SpiceAgent.log("WARN: Could not load ProbeAdvice.class for bootstrap injection");
-            return;
-        }
-
         File tempJar = File.createTempFile("spice-advice-", ".jar");
         tempJar.deleteOnExit();
 
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().putValue("Manifest-Version", "1.0");
 
+        int written = 0;
         try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(tempJar), manifest)) {
-            jos.putNextEntry(new JarEntry(ADVICE_CLASS_RESOURCE));
-            jos.write(classBytes);
-            jos.closeEntry();
+            for (String resource : BOOTSTRAP_CLASS_RESOURCES) {
+                byte[] classBytes = loadClassBytes(resource);
+                if (classBytes == null) {
+                    SpiceAgent.log("WARN: Could not load " + resource + " for bootstrap injection");
+                    continue;
+                }
+                jos.putNextEntry(new JarEntry(resource));
+                jos.write(classBytes);
+                jos.closeEntry();
+                written++;
+            }
         }
 
+        if (written == 0) {
+            return;
+        }
         inst.appendToBootstrapClassLoaderSearch(new java.util.jar.JarFile(tempJar));
-        SpiceAgent.log("Injected ProbeAdvice onto bootstrap classloader");
+        SpiceAgent.log("Injected ProbeAdvice + ClassGitoidRegistry onto bootstrap classloader");
     }
 
-    private static byte[] loadClassBytes() throws IOException {
+    private static byte[] loadClassBytes(String resource) throws IOException {
         try (InputStream is = BootstrapInjector.class.getClassLoader()
-                .getResourceAsStream(ADVICE_CLASS_RESOURCE)) {
+                .getResourceAsStream(resource)) {
             if (is == null) return null;
             return readAllBytes(is);
         }

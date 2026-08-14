@@ -67,6 +67,12 @@ public class EventClassGenerator {
             "className", "classGitoid", "classSha256", "codeSource", "jarGitoid", "jarSha256"
     };
 
+    /** Public String field on probe events, set to the declaring class's gitoid. */
+    public static final String PROBE_CLASS_GITOID_FIELD = "classGitoid";
+
+    /** Public String field on probe events: newline-delimited caller-class gitoids (JDK 9+). */
+    public static final String PROBE_CALLER_GITOIDS_FIELD = "callerGitoids";
+
     /**
      * Generate event classes for all probes and make them loadable.
      *
@@ -131,6 +137,14 @@ public class EventClassGenerator {
         av = cw.visitAnnotation(JFR_ENABLED_DESC, true);
         av.visit("value", true);
         av.visitEnd();
+
+        // public String classGitoid — set by ProbeAdvice to the declaring class's gitoid,
+        // linking the probe event to its inventory artifact. callerGitoids carries the
+        // newline-delimited gitoids of caller classes (JDK 9+).
+        cw.visitField(Opcodes.ACC_PUBLIC, PROBE_CLASS_GITOID_FIELD, "Ljava/lang/String;", null, null)
+                .visitEnd();
+        cw.visitField(Opcodes.ACC_PUBLIC, PROBE_CALLER_GITOIDS_FIELD, "Ljava/lang/String;", null, null)
+                .visitEnd();
 
         // Default constructor: public <init>() { super(); }
         MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
