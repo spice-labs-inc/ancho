@@ -122,10 +122,10 @@ The agent JAR targets JDK 8 bytecode (class version 52) so it loads on any JVM v
 
 ```bash
 # Build and run tests
-mvn clean verify
+./mvnw clean verify
 
 # Package the shaded agent JAR
-mvn package -DskipTests
+./mvnw package -DskipTests
 
 # The agent JAR is at target/ancho-<version>.jar
 ```

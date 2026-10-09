@@ -23,7 +23,7 @@ jobs:
           cache: maven
 
       - name: Install Dependencies and Build
-        run: mvn --batch-mode --update-snapshots -DskipTests install
+        run: ./mvnw --batch-mode --update-snapshots -DskipTests install
 
       - name: Test with Maven
-        run: mvn --batch-mode --update-snapshots verify
+        run: ./mvnw --batch-mode --update-snapshots verify
