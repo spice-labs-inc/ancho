@@ -209,17 +209,17 @@
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>3.6.0</version>
                 <dependencies>
-                    <!-- ASM 9.8 reads Java 24/25 (class file 68/69) multi-release
+                    <!-- ASM 9.11 reads Java 24/25 (class file 68/69) multi-release
                          entries in byte-buddy; the plugin default is too old -->
                     <dependency>
                         <groupId>org.ow2.asm</groupId>
                         <artifactId>asm</artifactId>
-                        <version>9.8</version>
+                        <version>9.11</version>
                     </dependency>
                     <dependency>
                         <groupId>org.ow2.asm</groupId>
                         <artifactId>asm-commons</artifactId>
-                        <version>9.8</version>
+                        <version>9.11</version>
                     </dependency>
                 </dependencies>
                 <executions>
